@@ -1,0 +1,58 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+*.bin
+
+# IDE and editor folders
+.idea/
+.vs/
+
+# Build folders
+build/
+build-*/
+cmake-build-*/
+
+# CMake generated
+CMakeFiles/
+CMakeCache.txt
+*.cmake
+Makefile
+
+# External libraries
+glm-master/
+
+# macOS
+.DS_Store
+
+#Installers
+Installation/
+*.msi
