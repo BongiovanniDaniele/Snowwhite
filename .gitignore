@@ -30,7 +30,6 @@
 *.exe
 *.out
 *.app
-*.bin
 
 # IDE and editor folders
 .idea/
@@ -38,21 +37,4 @@
 
 # Build folders
 build/
-build-*/
 cmake-build-*/
-
-# CMake generated
-CMakeFiles/
-CMakeCache.txt
-*.cmake
-Makefile
-
-# External libraries
-glm-master/
-
-# macOS
-.DS_Store
-
-#Installers
-Installation/
-*.msi
