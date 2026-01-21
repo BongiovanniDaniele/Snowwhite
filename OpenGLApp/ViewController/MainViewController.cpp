@@ -1,22 +1,39 @@
+
 #include "MainViewController.h"
 #include <iostream>
 #include <vector>
-
 #include "FallingObject.h"
+#include  "SoundManager.h"
 
 extern Player player;
 extern Model appleModel;
+extern Model maskModel;
 enum GameState{ MENU, GAME};
 extern GameState currentState;
 extern float game_z_speed;
 
+extern SoundManager gameMusic;
+extern SoundManager sfxMouse;
+extern SoundManager goodApple;
+extern SoundManager badApple;
+extern SoundManager diamond;
+extern SoundManager missed1;
+extern SoundManager missed2;
+extern SoundManager maskSpeech;
+extern SoundManager maskVanish;
+
 unsigned int diamondVAO = 0;
 unsigned int diamondVBO = 0;
 
-void renderMenu (GLFWwindow* window, Texture2D& startButtonTexture, Texture2D& startButtonTextureSelected) {
+extern unsigned int overlayVAO, overlayVBO;
+
+void renderMenu (GLFWwindow* window, Texture2D& startButtonTexture, Texture2D& startButtonTextureSelected, Texture2D& bgTexture) {
     menuBGShader.use();
-    glm::mat4 projection = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.0f, static_cast<float>(SCR_HEIGHT), -1.0f, 1.0f);
-    menuBGShader.setMat4("projection", projection);
+
+    glm::mat4 projectionSprites = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT), 0.0f, -1.0f, 1.0f);
+    menuBGShader.setMat4("projection", projectionSprites);
+
+    sprite2D.DrawSprite(bgTexture, glm::vec2(0.0f, 0.0f), glm::vec2(static_cast<float>(SCR_WIDTH), static_cast<float>(SCR_HEIGHT)));
 
     if (startButton.selected == false) {
         sprite2D.DrawSprite(startButtonTexture, glm::vec2(startButton.x, startButton.y), glm::vec2(startButton.width, startButton.height));
@@ -24,15 +41,6 @@ void renderMenu (GLFWwindow* window, Texture2D& startButtonTexture, Texture2D& s
     else {
         sprite2D.DrawSprite(startButtonTextureSelected, glm::vec2(startButton.x, startButton.y), glm::vec2(startButton.width, startButton.height));
     }
-
-    shaderText.use();
-    shaderText.setMat4("projection", projection);
-
-    float textScale = 2.0f * scaleScreen;
-    RenderText(shaderText, gameName, static_cast<float>(SCR_WIDTH) / 2.0f - 150.f * scaleScreen, static_cast<float>(SCR_HEIGHT) * 0.2f, textScale, glm::vec3(1.0f, 0.5f, 0.0f));
-
-    float buttonTextY = startButton.y + startButton.height * 0.5f - 20.f * scaleScreen;
-    RenderText(shaderText, "SNOW WHITE", startButton.x + 10 * scaleScreen, buttonTextY, scaleScreen * 0.7f, glm::vec3(1.0f, 1.0f, 1.0f));
 };
 
 void renderDiamond() {
@@ -103,7 +111,7 @@ void renderDiamond() {
     glBindVertexArray(0);
 }
 
-void renderGame(GLFWwindow* window, const Player player, Texture2D& bgTexture) {
+void renderGame(GLFWwindow* window, const Player player, Texture2D& bgTexture,Texture2D& life3, Texture2D& life2, Texture2D& life1, Texture2D& maskTexture) {
     glDisable(GL_DEPTH_TEST);
     menuBGShader.use();
 
@@ -168,6 +176,11 @@ void renderGame(GLFWwindow* window, const Player player, Texture2D& bgTexture) {
             }
             else if (obj.type == APPLE_GOOD) {
                 // RED
+                gameShader.setBool("useTexture", false);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, 0);
+
                 gameShader.setVec3("objectColor", glm::vec3(0.8f, 0.05f, 0.05f));
                 gameShader.setFloat("specularStrength", 0.5f);
                 gameShader.setFloat("emissionStrength", 0.0f);
@@ -176,6 +189,11 @@ void renderGame(GLFWwindow* window, const Player player, Texture2D& bgTexture) {
             }
             else {
                 // PURPLE
+                gameShader.setBool("useTexture", false);
+
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, 0);
+
                 gameShader.setVec3("objectColor", glm::vec3(0.4f, 0.0f, 0.6f));
                 gameShader.setFloat("specularStrength", 0.8f);
                 gameShader.setFloat("emissionStrength", 0.5f);
@@ -186,18 +204,78 @@ void renderGame(GLFWwindow* window, const Player player, Texture2D& bgTexture) {
     }
 
     glDisable(GL_DEPTH_TEST);
-    shaderText.use();
-    glm::mat4 projectionUI = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH),0.0F,static_cast<float>(SCR_HEIGHT));
+    menuBGShader.use();
+
+    glm::mat4 projectionUI = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH),static_cast<float>(SCR_HEIGHT),0.0f,-1.0f,1.0f);
     shaderText.setMat4("projection", projectionUI);
 
+    float iconSize = 450.0f * scaleScreen;
+
+    float aspectRatio = 1792.0f / 592.0f;
+    float iconHeight = iconSize / aspectRatio;
+
+    float textX = 25.0f * scaleScreen;
+    float iconX = textX + (300.0f * scaleScreen);
+    float iconY = 15.0f * scaleScreen;
+
+    if (lives >= 3) {
+        sprite2D.DrawSprite(life3, glm::vec2(iconX, iconY), glm::vec2(iconSize, iconHeight)); // Adatta /2.5f in base alla forma della tua immagine
+    }
+    else if (lives == 2) {
+        sprite2D.DrawSprite(life2, glm::vec2(iconX, iconY), glm::vec2(iconSize, iconHeight));
+    }
+    else {
+        sprite2D.DrawSprite(life1, glm::vec2(iconX, iconY), glm::vec2(iconSize, iconHeight));
+    }
+
+    shaderText.use();
+    glm::mat4 projectionText = glm::ortho(0.0f, static_cast<float>(SCR_WIDTH), 0.0f, static_cast<float>(SCR_HEIGHT));
+    shaderText.setMat4("projection", projectionText);
+
+    float textScale = 1.5f;
+    float textY = static_cast<float>(SCR_HEIGHT) - (125.0f * scaleScreen);
+    // Score (a destra)
     std::string scoreText = "Score: " + std::to_string(score);
-    RenderText(shaderText, scoreText, SCR_WIDTH- 250.0f, SCR_HEIGHT - 50.0f, 1.0f, glm::vec3(1.0f, 1.0f,1.0f));
+    RenderText(shaderText, scoreText, SCR_WIDTH - 350.0f, textY, textScale, glm::vec3(1.0f, 1.0f, 1.0f));
 
-    std::string livesText = "Lives: " + std::to_string(lives);
+    // Lives (a sinistra, spostato un po' a destra per non coprire l'immagine)
     glm::vec3 lifeColor = (lives == 1) ? glm::vec3(1.0f, 0.0f, 0.0f) : glm::vec3(0.0f, 1.0f, 0.0f);
-    RenderText(shaderText, livesText, 25.0f, SCR_HEIGHT - 50.0f, 1.0f, lifeColor);
 
+    // NOTA: Ho cambiato la X da 25.0f a (iconX + iconSize + 10) per metterlo ACCANTO all'immagine
+    RenderText(shaderText, "Lives:", textX, textY, textScale, lifeColor);
     glEnable(GL_DEPTH_TEST);
+
+    if (showMagicMask) {
+        // Mask
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        gameShader.use();
+
+        glm::mat4 projectionUI2 = glm::ortho(-1.0f * (float)SCR_WIDTH/(float)SCR_HEIGHT, 1.0f * (float)SCR_WIDTH/(float)SCR_HEIGHT, -1.0f, 1.0f, -10.f, 10.f);
+        glm::mat4 viewUI = glm::mat4(1.0f);
+        gameShader.setMat4("projection", projectionUI2);
+        gameShader.setMat4("view", viewUI);
+
+        gameShader.setVec3("lightPos", glm::vec3(2.0f, 5.0f, 5.0f));
+
+        glm::mat4 modelMask = glm::mat4(1.0f);
+        modelMask = glm::translate(modelMask, glm::vec3(0.0f, maskOffsetY, -1.0f));
+        modelMask = glm::rotate (modelMask, glm::radians((float)sin(glfwGetTime()*2.0f)*5.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        modelMask = glm::scale(modelMask, glm::vec3(0.35f));
+        gameShader.setMat4("model", modelMask);
+
+        // Mask material
+        gameShader.setBool("useTexture", false);
+        gameShader.setVec3("objectColor", glm::vec3(0.9f, 0.9f, 0.9f));
+        gameShader.setFloat("specularStrength", 0.3f); // Lucid
+        gameShader.setFloat("emissionStrength", 0.05f); // Brightness
+
+        maskModel.Draw(gameShader);
+
+        glEnable(GL_DEPTH_TEST);
+    }
 }
 
 void MainViewController::loadModels() {
@@ -211,6 +289,10 @@ void MainViewController::loadModels() {
     std::string applePath = std::string(getResource("Models/apple.obj"));
     appleModel.directory = applePath;
     appleModel.loadModel();
+
+    std::string maskPath = std::string(getResource("Models/Sculpting.obj"));
+    maskModel.directory = maskPath;
+    maskModel.loadModel();
 }
 
 int MainViewController::main(GLFWwindow* window)
@@ -222,14 +304,21 @@ int MainViewController::main(GLFWwindow* window)
 
     sprite2D = SpriteRenderer(menuBGShader);
 
-    Texture2D backGroundTexture = loadTextureFromFile(getResource("Backgrounds/bosco.png").c_str(),false);
+    Texture2D backGroundMenu = loadTextureFromFile(getResource("Backgrounds/Menu_Background_Logo.png").c_str(),false);
+    Texture2D backGroundGame = loadTextureFromFile(getResource("Backgrounds/bosco.png").c_str(),false);
 
     Texture2D startButtonTexture = loadTextureFromFile(getResource("Buttons/StartButton/unselected.png").c_str(), true);
     Texture2D startButtonTextureSelected = loadTextureFromFile(getResource("Buttons/StartButton/selected.png").c_str(), true);
 
+    Texture2D texLives3 = loadTextureFromFile(getResource("Graphics/3lifes.png").c_str(),true);
+    Texture2D texLives2 = loadTextureFromFile(getResource("Graphics/2lifes.png").c_str(),true);
+    Texture2D texLives1 = loadTextureFromFile(getResource("Graphics/1life.png").c_str(),true);
+
+    Texture2D maskTexture = loadTextureFromFile(getResource("Graphics/Gemini_Generated_Image_4vgbyy4vgbyy4vgb.png").c_str(),true);
+
     const float y = static_cast<float>(SCR_HEIGHT) - static_cast<float>(SCR_HEIGHT) * 0.25f;
     const float buttonWidth = static_cast<float>(SCR_WIDTH) / 5.0f;
-    const float buttonHeight = buttonWidth / 4.0f;
+    const float buttonHeight = buttonWidth / 3.0f;
     startButton.x = static_cast<float>(SCR_WIDTH) / 2 - buttonWidth*1.4f / 2;
     startButton.y = y - buttonHeight*0.4f/2;
     startButton.height = buttonHeight*1.4f;
@@ -242,6 +331,8 @@ int MainViewController::main(GLFWwindow* window)
     float currentSpawnInterval = 2.0f;
     float currentFallSpeed = 6.0f;
     int poisonThreshold = 30;
+    bool alternateMiss=false;
+    int level = 1;
 
     while (!glfwWindowShouldClose(window))
     {
@@ -261,21 +352,6 @@ int MainViewController::main(GLFWwindow* window)
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        //Start Button
-        // const float y = static_cast<float>(SCR_HEIGHT) - static_cast<float>(SCR_HEIGHT) * 0.25f;
-        // const float buttonWidth = static_cast<float>(SCR_WIDTH) / 5.0f;
-        // const float buttonHeight = buttonWidth / 4.0f;
-        // startButton.x = static_cast<float>(SCR_WIDTH) / 2 - buttonWidth*1.4f / 2;
-        // startButton.y = y - buttonHeight*0.4f/2;
-        // startButton.height = buttonHeight*1.4f;
-        // startButton.width = buttonWidth*1.4f;
-        // if (startButton.selected == false) {
-        //     sprite2D.DrawSprite(startButtonTexture, glm::vec2(startButton.x, startButton.y), glm::vec2(startButton.width, startButton.height));
-        // }
-        // else {
-        //     sprite2D.DrawSprite(startButtonTextureSelected, glm::vec2(startButton.x, startButton.y), glm::vec2(startButton.width, startButton.height));
-        // }
-
         if (loaded == false) {
             std::cout << "Load Models" << std::endl;
             loadModels();
@@ -284,24 +360,27 @@ int MainViewController::main(GLFWwindow* window)
 
         if (currentState == MENU) {
             glDisable(GL_DEPTH_TEST);
-            renderMenu(window, startButtonTexture, startButtonTextureSelected);
+            renderMenu(window, startButtonTexture, startButtonTextureSelected, backGroundMenu);
         } else if (currentState == GAME) {
             glEnable(GL_DEPTH_TEST);
-
-            if (score < 10) {
+            if (score>=30 && level <3) {
+                level=3;
+            }else if (score>=10 && level <2) {
+                level=2;
+            }
+            if (level==1) {
                 // LIVELLO FACILE
                 currentSpawnInterval = 1.8f; // Lento
                 currentFallSpeed = 6.0f;     // Caduta tranquilla
                 poisonThreshold = 30;        // ~20% Veleno (considerando 10% gemme)
             }
-            else if (score >= 10 && score < 30) {
+            else if (level==2) {
                 // LIVELLO MEDIO
                 currentSpawnInterval = 1.2f; // Più frequente
                 currentFallSpeed = 8.5f;     // Più veloce
                 poisonThreshold = 50;        // ~40% Veleno
             }
-            else {
-                // LIVELLO DIFFICILE (INCUBO)
+            else {// LIVELLO DIFFICILE (INCUBO)
                 currentSpawnInterval = 0.7f; // Pioggia di oggetti!
                 currentFallSpeed = 11.0f;    // Velocissimi
                 poisonThreshold = 70;        // ~60% Veleno
@@ -350,15 +429,15 @@ int MainViewController::main(GLFWwindow* window)
                     if (altezzaGiusta && corsiaGiusta) {
                         if (obj.type == GEM) {
                             score += 10; // Bonus grande!
-                            // soundEngine.play("bling");
+                            diamond.playSound();
                         }
                         else if (obj.type == APPLE_POISON) {
                             score -= 5;  // Penalità punti
-                            // soundEngine.play("damage");
+                            badApple.playSound();
                         }
                         else { // APPLE_GOOD
                             score += 1;  // Punti normali
-                            // soundEngine.play("eat");
+                            goodApple.playSound();
                         }
                         obj.active = false; // Mela raccolta, sparisce
                     }
@@ -368,6 +447,12 @@ int MainViewController::main(GLFWwindow* window)
                     else if (obj.position.y < -5.0f) {
                         if (obj.type == APPLE_GOOD) {
                             lives--;
+                            if (alternateMiss){
+                                missed2.playSound();
+                            }else{
+                                missed1.playSound();
+                            }
+                            alternateMiss = !alternateMiss;
                         }
                         obj.active = false; // Mela persa, sparisce
                     }
@@ -378,11 +463,53 @@ int MainViewController::main(GLFWwindow* window)
                 currentState = MENU;
                 lives = 3;
                 score = 0;
+                level=1;
                 objects.clear();
                 player.position = glm::vec3(0.0f, 0.5f, 0.0f);
+                gameMusic.stopSound();
+                menuMusic.playSound();
+
+                showMagicMask = false;
+                maskEventTimer = 0.0f;
+                maskOffsetY = 0.0f;
+                isDraggingMask = false;
             }
 
-            renderGame(window,player, backGroundTexture);
+            if (!showMagicMask) {
+                maskEventTimer += deltaTime;
+                if (maskEventTimer >= timeBetweenMaskEvents) {
+                    showMagicMask = true;
+                    maskEventTimer = 0.0f;
+                    maskOffsetY = 0.0f;
+                    maskSpeech.playSound();
+                }
+            } else {
+                double mouseX, mouseY;
+                glfwGetCursorPos(window, &mouseX, &mouseY);
+
+                if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+                    if (!isDraggingMask) {
+                        isDraggingMask = true;
+                        dragStartY = mouseY;
+                    } else {
+                        float dragAmount = (float)(mouseY - dragStartY);
+                        maskOffsetY = -dragAmount / (float)SCR_HEIGHT * 2.0f;
+
+                        if (maskOffsetY > 0.0f) maskOffsetY = 0.0f;
+                    }
+                } else {
+                    isDraggingMask = false;
+
+                    if (maskOffsetY < -1.2f) {
+                        showMagicMask = false;
+                        maskVanish.playSound();
+                    } else {
+                        maskOffsetY = 0.0f;
+                    }
+                }
+            }
+
+            renderGame(window,player, backGroundGame, texLives3, texLives2, texLives1, maskTexture);
         }
         // glfw: swap buffers and poll IO events (keys pressed/released, mouse moved etc.)
         // -------------------------------------------------------------------------------

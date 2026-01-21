@@ -27,6 +27,9 @@
 int SCR_WIDTH = 1920;
 int SCR_HEIGHT = 1080;
 
+// Mouse
+unsigned int overlayVAO, overlayVBO;
+
 // Shaders
 Shader gameShader; //Used for 3D Objects
 Shader shaderText; //Used for Text Rendering
@@ -47,12 +50,19 @@ float lastFrame = 0.0f;
 std::map<GLchar, Character> Characters;
 unsigned int VAOText, VBOText;
 
-//TODO: Change this to your game Name, so the new Window will have this name
-string gameName = "START";
+string gameName = "Down To The Last Bite";
 
 // Sound
 SoundManager menuMusic;
+SoundManager gameMusic;
 SoundManager sfxMouse;
+SoundManager goodApple;
+SoundManager badApple;
+SoundManager diamond;
+SoundManager missed1;
+SoundManager missed2;
+SoundManager maskSpeech;
+SoundManager maskVanish;
 SoundEngine soundEngine;
 
 // Those variables are used to fix the window to the screen size
@@ -92,6 +102,8 @@ Button startButton;
 
 Player player;
 Model appleModel;
+Model maskModel;
+
 
 float lastSpawnTime = 0.0f;
 float spawnInterval = 2.0f;
@@ -100,6 +112,15 @@ std::vector<FallingObject> objects;
 //Statistiche gioco
 int score =0;
 int lives =3;
+
+//Mouse
+bool showMagicMask = false;
+float maskEventTimer = 0.0f;
+float timeBetweenMaskEvents = 30.0f;
+
+bool isDraggingMask = false;
+float maskOffsetY = 0.0f;
+double dragStartY = 0.0;
 
 int main()
 {
@@ -111,21 +132,28 @@ int main()
         minHeight = static_cast<float>(SCR_HEIGHT) / 2.0f*77/100;
 
         model = glm::mat4(1.0f);
-        
+
         //----Set SoundEngine
         soundEngine.setVolSuono(100);
         soundEngine.setVolMusica(100);
         soundEngine.startEngine();
 
         //----Set Music
-        menuMusic = SoundManager(getResource("Music/menu.mp3"), soundEngine.volMusic, true, &soundEngine);
-        sfxMouse = SoundManager(getResource("SFX/mouseClick.wav"), soundEngine.volMusic, false, &soundEngine);
-
+        menuMusic = SoundManager(getResource("Music/Overture.mp3"), soundEngine.volMusic, true, &soundEngine);
+        gameMusic = SoundManager(getResource("Music/Aquarium.mp3"), soundEngine.volMusic,true, &soundEngine);
+        sfxMouse = SoundManager(getResource("SFX/witchLaugh.wav"), soundEngine.volSound, false, &soundEngine);
+        goodApple = SoundManager ( getResource("SFX/appleCaught.wav"), soundEngine.volSound, false, &soundEngine);
+        badApple = SoundManager(getResource("SFX/badApple.wav"), soundEngine.volSound, false, &soundEngine);
+        diamond = SoundManager(getResource("SFX/diamond.wav"), soundEngine.volSound, false, &soundEngine);
+        missed1 = SoundManager(getResource("SFX/missLaugh.wav"), soundEngine.volMusic, false, &soundEngine);
+        missed2 = SoundManager(getResource("SFX/missVoice.wav"), soundEngine.volMusic, false, &soundEngine);
+        maskSpeech = SoundManager(getResource("SFX/Mirror_sfx.mp3"), soundEngine.volMusic, false, &soundEngine);
+        maskVanish = SoundManager(getResource("SFX/maskVanish.mp3"), soundEngine.volMusic, false, &soundEngine);
         //----Opening Window
         GLFWwindow* window = setWindow();
 
         //----Load Font
-        loadFont(getResource("Fonts/Antonio/static/Antonio-Bold.ttf"));
+        loadFont(getResource("Fonts/Snowwhite/IMFellEnglishSC-Regular.ttf"));
 
         target_x_position = 0.0f;
         current_lane = 1;
@@ -337,6 +365,8 @@ void processInput(GLFWwindow* window) {
                 if (startButton.clicked == false) {// check if is already clicked
                     sfxMouse.playSound();
                     startButton.clicked = true;
+                    menuMusic.stopSound();
+                    gameMusic.playSound();
                     currentState = GAME;
                 }
             }
@@ -379,7 +409,7 @@ void processInput(GLFWwindow* window) {
 // ---------------------------------------------------------------------------------------------
 void framebuffer_size_callback(GLFWwindow* window, int width, int height)
 {
-    // make sure the viewport matches the new window dimensions; note that width and 
+    // make sure the viewport matches the new window dimensions; note that width and
     // height will be significantly larger than specified on retina displays.
     glViewport(0, 0, width, height);
     //test
@@ -462,19 +492,39 @@ Texture2D loadTextureFromFile(const char* file, bool alpha)
         texture.Internal_Format = GL_RGBA;
         texture.Image_Format = GL_RGBA;
     }
+    // else { ... di default è GL_RGB nel costruttore di Texture2D ... }
+
     // load image
     int width, height, nrChannels;
-    unsigned char* data = stbi_load(file, &width, &height, &nrChannels, 0);
-    
-    // now generate texture
-    texture.Generate(width, height, data);
+
+    // --- MODIFICA QUI ---
+    // Invece di passare 0 come ultimo parametro (che mantiene i canali originali del file),
+    // FORZIAMO il numero di canali che vogliamo (3 per RGB, 4 per RGBA).
+    // Questo risolve il problema se l'immagine su disco ha un formato strano (es. scala di grigi o palette).
+    int desiredChannels = alpha ? 4 : 3;
+    unsigned char* data = stbi_load(file, &width, &height, &nrChannels, desiredChannels);
+    // --------------------
+
+    // Adesso width, height e data sono allineati correttamente al formato che OpenGL si aspetta
+
+    if (data) // Controllo di sicurezza
+    {
+        texture.Generate(width, height, data);
+    }
+    else
+    {
+        std::cout << "Failed to load texture: " << file << std::endl;
+    }
+
+    // ... resto del codice uguale ...
     glBindTexture(GL_TEXTURE_2D, texture.ID);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // Usa CLAMP_TO_EDGE per evitare che bordi strani appaiano se l'immagine non è perfetta
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
-    // and finally free image data
+
     stbi_image_free(data);
     return texture;
 }

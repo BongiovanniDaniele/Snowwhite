@@ -1,3 +1,4 @@
+
 #pragma once
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
@@ -51,6 +52,16 @@ extern float lane_width;
 extern int score;
 extern int lives;
 
+
+//Mouse
+extern bool showMagicMask;
+extern float maskEventTimer;
+extern float timeBetweenMaskEvents;
+
+extern bool isDraggingMask;
+extern float maskOffsetY;
+extern double dragStartY;
+
 //Camera
 extern glm::vec3 cameraUp;
 extern glm::vec3 cameraFront;
@@ -71,7 +82,7 @@ extern void processInput(GLFWwindow* window);
 extern void RenderText(const Shader& shader, std::string text, float x, float y, float scale, glm::vec3 color);
 extern Texture2D loadTextureFromFile(const char* file, bool alpha);
 extern inline std::string getResource(const std::string& relativePath);
-
+extern void renderGame(GLFWwindow* window, Player player, Texture2D& bgTexture, Texture2D& life3, Texture2D& life2, Texture2D& life1, Texture2D& maskTexture);
 class MainViewController
 {
 public:
@@ -81,4 +92,3 @@ protected:
 	bool loaded = false; // Used to check if the models are loaded
 
 };
-
