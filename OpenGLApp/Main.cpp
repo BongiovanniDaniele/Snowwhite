@@ -6,6 +6,8 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <ctime>
+#include <chrono>
 
 #include "DataClasses/Character.h"
 #include "DataClasses/GameCharacter.h"
@@ -16,6 +18,7 @@
 #include "DataClasses/SoundEngine.h"
 #include "DataClasses/shader.h"
 #include "DataClasses/model.h"
+#include "DataClasses/HighScoreManager.h"
 
 #include <ft2build.h>
 
@@ -26,6 +29,9 @@
 // Screen Size (Default)
 int SCR_WIDTH = 1920;
 int SCR_HEIGHT = 1080;
+
+// Mouse
+unsigned int overlayVAO, overlayVBO;
 
 // Shaders
 Shader gameShader; //Used for 3D Objects
@@ -47,19 +53,24 @@ float lastFrame = 0.0f;
 std::map<GLchar, Character> Characters;
 unsigned int VAOText, VBOText;
 
-//TODO: Change this to your game Name, so the new Window will have this name
 string gameName = "Down To The Last Bite";
 
 // Sound
 SoundManager menuMusic;
 SoundManager gameMusic;
-SoundManager sfxMouse;
+SoundManager sfxPlay;
 SoundManager goodApple;
 SoundManager badApple;
 SoundManager diamond;
 SoundManager missed1;
 SoundManager missed2;
+SoundManager maskSpeech;
+SoundManager maskVanish;
+SoundManager glass;
+SoundManager sfxMouse;
+SoundManager sfxMirror;
 SoundEngine soundEngine;
+
 
 // Those variables are used to fix the window to the screen size
 float scaleScreen;
@@ -78,7 +89,10 @@ int loadFont(const std::string& font_name);
 
 enum GameState {
     MENU,
-    GAME
+    GAME,
+    GAME_OVER_ANIMATION,
+    INPUT_NAME,
+    LEADERBOARD
 };
 GameState currentState = MENU;
 
@@ -95,9 +109,14 @@ glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
 
 Button startButton;
+Button lbButton;
+Button backButton;
 
 Player player;
 Model appleModel;
+Model maskModel;
+Model ampouleModel;
+Model mirrorModel;
 
 float lastSpawnTime = 0.0f;
 float spawnInterval = 2.0f;
@@ -106,6 +125,24 @@ std::vector<FallingObject> objects;
 //Statistiche gioco
 int score =0;
 int lives =3;
+
+//Mouse
+bool showMagicMask = false;
+int activeDistractionType = 0;
+float maskEventTimer = 0.0f;
+bool controlsInverted = false;
+float mirrorTimer = 0.0f;
+float timeBetweenMaskEvents = 30.0f;
+
+bool isDraggingMask = false;
+float maskOffsetY = 0.0f;
+double dragStartY = 0.0;
+
+std::string currentInputName = "";
+bool keyProcessed = false;
+std::vector<ScoreEntry> highScoresList;
+extern const std::string SCORE_FILE = "highscores.txt";
+
 
 int main()
 {
@@ -126,12 +163,17 @@ int main()
         //----Set Music
         menuMusic = SoundManager(getResource("Music/Overture.mp3"), soundEngine.volMusic, true, &soundEngine);
         gameMusic = SoundManager(getResource("Music/Aquarium.mp3"), soundEngine.volMusic,true, &soundEngine);
-        sfxMouse = SoundManager(getResource("SFX/witchLaugh.wav"), soundEngine.volSound, false, &soundEngine);
+        sfxPlay = SoundManager(getResource("SFX/witchLaugh.wav"), soundEngine.volSound, false, &soundEngine);
         goodApple = SoundManager ( getResource("SFX/appleCaught.wav"), soundEngine.volSound, false, &soundEngine);
         badApple = SoundManager(getResource("SFX/badApple.wav"), soundEngine.volSound, false, &soundEngine);
         diamond = SoundManager(getResource("SFX/diamond.wav"), soundEngine.volSound, false, &soundEngine);
         missed1 = SoundManager(getResource("SFX/missLaugh.wav"), soundEngine.volMusic, false, &soundEngine);
         missed2 = SoundManager(getResource("SFX/missVoice.wav"), soundEngine.volMusic, false, &soundEngine);
+        maskSpeech = SoundManager(getResource("SFX/sfxMask.mp3"), soundEngine.volMusic, false, &soundEngine);
+        maskVanish = SoundManager(getResource("SFX/maskVanish.mp3"), soundEngine.volMusic, false, &soundEngine);
+        glass = SoundManager(getResource("SFX/Breaked_Glass.mp3"),soundEngine.volMusic, false, &soundEngine);
+        sfxMouse = SoundManager(getResource("SFX/mouseClick.wav"),soundEngine.volMusic, false, &soundEngine);
+        sfxMirror = SoundManager(getResource("SFX/sfxMirror.mp3"),soundEngine.volMusic, false, &soundEngine);
         //----Opening Window
         GLFWwindow* window = setWindow();
 
@@ -342,15 +384,82 @@ void processInput(GLFWwindow* window) {
         glfwSetWindowShouldClose(window, true);
     }
 
+    if (currentState == INPUT_NAME) {
+        // Se abbiamo già 3 lettere, premi ENTER per confermare
+        if (currentInputName.length() >= 3) {
+            if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS && !keyProcessed) {
+                // SALVA IL PUNTEGGIO
+                HighScoreManager::addScore(currentInputName, score, SCORE_FILE);
+                // Carica la lista aggiornata per visualizzarla
+                highScoresList = HighScoreManager::loadScores(SCORE_FILE);
+                currentState = MENU;
+                menuMusic.playSound();
+
+                keyProcessed = true;
+                sfxMouse.playSound(); // Un suono di conferma
+            }
+        }
+        else {
+            // Logica per inserire lettere A-Z
+            // Questo è un modo semplice. Per un input più complesso servirebbe una callback
+            for (int key = GLFW_KEY_A; key <= GLFW_KEY_Z; ++key) {
+                if (glfwGetKey(window, key) == GLFW_PRESS && !keyProcessed) {
+                    char letter = 'A' + (key - GLFW_KEY_A);
+                    currentInputName += letter;
+                    keyProcessed = true;
+                    // Piccolo suono "tap" se ce l'hai, altrimenti nulla
+                }
+            }
+        }
+
+        // Reset del flag keyProcessed quando nessun tasto è premuto
+        bool anyKeyPressed = false;
+        for (int key = GLFW_KEY_A; key <= GLFW_KEY_Z; ++key) {
+             if (glfwGetKey(window, key) == GLFW_PRESS) anyKeyPressed = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) anyKeyPressed = true;
+
+        if (!anyKeyPressed) keyProcessed = false;
+    }
+
     if (currentState == MENU) {
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ) {
             if (startButton.selected == true) { // Check if the mouse is inside the button
                 if (startButton.clicked == false) {// check if is already clicked
-                    sfxMouse.playSound();
+                    // 1. Otteniamo l'orario attuale ad altissima precisione
+                    auto now = std::chrono::high_resolution_clock::now();
+                    // 2. Calcoliamo quanto tempo è passato dall' "epoca" (tempo 0 del computer)
+                    auto duration = now.time_since_epoch();
+                    // 3. Convertiamo questo tempo in millisecondi puri
+                    unsigned int millis = (unsigned int)std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+                    // 4. Diamo questo numero enorme a srand come "seme"
+                    srand(millis);
+                    sfxPlay.playSound();
                     startButton.clicked = true;
                     menuMusic.stopSound();
                     gameMusic.playSound();
+                    lastFrame = static_cast<float>(glfwGetTime());
+                    deltaTime = 0.0f;
+                    // --- AGGIUNGI QUESTO BLOCCO DI RESET QUI ---
+                    lives = 3;             // Ripristina le vite
+                    score = 0;             // Azzera il punteggio
+                    objects.clear();       // Rimuove vecchie mele rimaste
+                    currentInputName = ""; // Pulisce eventuale nome precedente
+                    // Opzionale: rimetti il player al centro se necessario
+                    target_x_position = 0.0f;
+                    current_lane = 1;
                     currentState = GAME;
+                }
+            }
+            if (lbButton.selected == true) {
+                if (lbButton.clicked == false) {
+                    sfxMouse.playSound();
+                    lbButton.clicked = true;
+
+                    // --- AGGIUNGI QUESTA RIGA ---
+                    // Carica i punteggi freschi dal file prima di mostrare la schermata
+                    highScoresList = HighScoreManager::loadScores(SCORE_FILE);
+                    currentState = LEADERBOARD; // Cambia stato
                 }
             }
         }
@@ -358,11 +467,42 @@ void processInput(GLFWwindow* window) {
             if (startButton.selected == true) {
                 startButton.clicked = false;
             }
+            if (lbButton.clicked == true){
+                lbButton.clicked = false;
+            }
         }
     }
+    if (currentState == LEADERBOARD) {
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            if (backButton.selected == true) {
+                if (backButton.clicked == false) {
+                    sfxMouse.playSound();
+                    backButton.clicked = true;
 
+                    // Torna al menu
+                    currentState = MENU;
+
+                    // Reset click flag immediato o al rilascio (gestito sotto)
+                }
+            }
+        }
+
+        // Reset del flag clicked al rilascio del mouse
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) {
+            if (backButton.selected == true) backButton.clicked = false;
+        }
+    }
     if (currentState == GAME) {
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        int keyLeft = GLFW_KEY_A;
+        int keyRight = GLFW_KEY_D;
+
+        if (controlsInverted)
+        {
+            keyLeft = GLFW_KEY_D;
+            keyRight = GLFW_KEY_A;
+        }
+
+        if (glfwGetKey(window, keyLeft) == GLFW_PRESS) {
             if (isAPressed == false) {
                 if (current_lane > 0) {
                     movePlayerToLane(current_lane - 1);
@@ -373,7 +513,7 @@ void processInput(GLFWwindow* window) {
         else {
                 isAPressed = false;
         }
-         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+         if (glfwGetKey(window, keyRight) == GLFW_PRESS) {
                     if (isDPressed == false) {
                         if (current_lane < 2) {
                             movePlayerToLane(current_lane +1 );
@@ -408,12 +548,30 @@ void mouse_callback(GLFWwindow* window, double xPosIn, double yPosIn)
     const auto h_conv = static_cast<float>(SCR_HEIGHT);  //1440
     const float xPos = (w_conv * static_cast<float>(xPosIn) / static_cast<float>(width));
     float yPos = (h_conv * static_cast<float>(yPosIn) / static_cast<float>(height));
-    if (xPos > startButton.x && xPos < startButton.x + startButton.width &&
+    if (currentState == MENU){
+        if (xPos > startButton.x && xPos < startButton.x + startButton.width &&
         yPos > startButton.y && yPos < startButton.y + startButton.height) {
-        startButton.selected = true;
+            startButton.selected = true;
         }
-    else {
-        startButton.selected = false;
+        else {
+            startButton.selected = false;
+        }
+        if (xPos > lbButton.x && xPos < lbButton.x + lbButton.width &&
+            yPos > lbButton.y && yPos < lbButton.y + lbButton.height) {
+            lbButton.selected = true;
+            }
+        else {
+            lbButton.selected = false;
+        }
+    }
+    if (currentState == LEADERBOARD){
+        if (xPos > backButton.x && xPos < backButton.x + backButton.width &&
+        yPos > backButton.y && yPos < backButton.y + backButton.height) {
+            backButton.selected = true;
+        }
+        else {
+            backButton.selected = false;
+        }
     }
 }
 

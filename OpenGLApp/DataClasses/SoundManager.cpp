@@ -28,6 +28,8 @@ void SoundManager::playSound()
 {
     if (engine_ptr == nullptr) return;
 
+    stopSound();
+
     SF_INFO sfInfo;
     SNDFILE* sndFile = sf_open(filename.c_str(), SFM_READ, &sfInfo);
     if (!sndFile) {
@@ -73,6 +75,16 @@ bool SoundManager::isPlaying() const
 void SoundManager::changeVolume() const {
     const float newVolume = (isMusic ? engine_ptr->volMusic : engine_ptr->volSound) / 100.0f;
     alSourcef(source, AL_GAIN, newVolume);
+}
+
+bool SoundManager::isFinished() {
+    if (source == 0) return true;
+
+    ALint state;
+    alGetSourcei(source, AL_SOURCE_STATE, &state);
+
+    // Il suono è finito se lo stato è AL_STOPPED
+    return (state == AL_STOPPED);
 }
 
 SoundManager& SoundManager::operator=(const SoundManager &op)

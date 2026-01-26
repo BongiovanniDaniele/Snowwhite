@@ -16,6 +16,7 @@ public:
 	void stopSound();
 	bool isPlaying() const;
 	void changeVolume() const;
+	bool isFinished();
 
 	SoundManager &operator=(const SoundManager &op);
 

@@ -1,0 +1,36 @@
+# Blender 4.5.3 LTS MTL File: 'None'
+# www.blender.org
+
+newmtl Bronze_metal
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+d 1.000000
+illum 2
+map_Kd C:/metal08_basecolor.jpg
+map_Ks C:/metal08_specular.jpg
+map_refl C:/metal08_metallic.jpg
+map_Bump -bm 1.000000 C:/metal08_normal_opengl.jpg
+
+newmtl Glass
+Ns 250.000000
+Ka 1.000000 1.000000 1.000000
+Kd 0.644307 0.619080 0.549914
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 2.000000
+d 1.000000
+illum 3
+map_Bump -bm 0.150000 C:/garage_floor_nor_gl_4k.jpg
+
+newmtl Painted_Steel
+Ka 1.000000 1.000000 1.000000
+Ks 0.000000 0.000000 0.000000
+Ke 0.000000 0.000000 0.000000
+Ni 1.450000
+d 1.000000
+illum 1
+map_Kd C:/painted_steel_15_color.jpg
+map_Ns C:/painted_steel_15_roughness.jpg
+map_refl C:/painted_steel_15_metallic.jpg
