@@ -6,8 +6,10 @@ out vec2 TexCoords;
 uniform mat4 model;
 uniform mat4 projection;
 
+// For orthographic perspective and transparence
+
 void main()
 {
-    TexCoords = vertex.zw;
-    gl_Position = projection * model * vec4(vertex.xy, 0.0, 1.0);
+    TexCoords = vertex.zw; // texture coordinates of the vertex
+    gl_Position = projection * model * vec4(vertex.xy, 0.0, 1.0); // clip space position as result
 }

@@ -8,6 +8,7 @@
 #include "DataClasses/GameCharacter.h"
 #include "DataClasses/SoundManager.h"
 #include "DataClasses/SoundEngine.h"
+#include "DataClasses/HighScoreManager.h"
 #include <map>
 
 #include "FallingObject.h"
@@ -26,6 +27,8 @@ extern float lastX;
 extern float lastY;
 //Pulsanti
 extern Button startButton;
+extern Button lbButton;
+extern Button backButton;
 
 // timing
 extern float deltaTime;
@@ -59,6 +62,8 @@ extern float maskEventTimer;
 extern float timeBetweenMaskEvents;
 
 extern bool isDraggingMask;
+extern bool controlsInverted;
+extern float mirrorTimer;
 extern float maskOffsetY;
 extern double dragStartY;
 
@@ -82,7 +87,7 @@ extern void processInput(GLFWwindow* window);
 extern void RenderText(const Shader& shader, std::string text, float x, float y, float scale, glm::vec3 color);
 extern Texture2D loadTextureFromFile(const char* file, bool alpha);
 extern inline std::string getResource(const std::string& relativePath);
-extern void renderGame(GLFWwindow* window, Player player, Texture2D& bgTexture, Texture2D& life3, Texture2D& life2, Texture2D& life1, Texture2D& maskTexture);
+extern void renderGame(GLFWwindow* window, Player player, Texture2D& bgTexture, Texture2D& life3, Texture2D& life2, Texture2D& life1, float tiltAngle, float mirrorTimer);
 class MainViewController
 {
 public:

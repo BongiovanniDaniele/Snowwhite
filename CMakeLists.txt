@@ -59,17 +59,23 @@ file(GLOB_RECURSE APP_SOURCES
 # === Create executable ===
 if (APPLE)
     message(STATUS "Create executable on Apple")
-    add_executable(${APP_NAME} ${APP_SOURCES} OpenGLApp)
+    add_executable(${APP_NAME} ${APP_SOURCES} OpenGLApp
+            OpenGLApp/DataClasses/HighScoreManager.cpp
+            OpenGLApp/DataClasses/HighScoreManager.h)
 elseif (WIN32)
     message(STATUS "Create executable on Windows")
     add_executable(${APP_NAME}
             ${APP_SOURCES}
             OpenGLApp
             OpenGLApp/app_icon.rc
+            OpenGLApp/DataClasses/HighScoreManager.cpp
+            OpenGLApp/DataClasses/HighScoreManager.h
     )
 elseif (UNIX AND NOT APPLE)
     message(STATUS "Create executable on Linux")
-    add_executable(${APP_NAME} ${APP_SOURCES} OpenGLApp)
+    add_executable(${APP_NAME} ${APP_SOURCES} OpenGLApp
+            OpenGLApp/DataClasses/HighScoreManager.cpp
+            OpenGLApp/DataClasses/HighScoreManager.h)
 endif ()
 
 # 🔧 Include directories assegnati correttamente al target

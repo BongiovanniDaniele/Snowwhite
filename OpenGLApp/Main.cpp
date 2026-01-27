@@ -6,6 +6,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <chrono>
 
 #include "DataClasses/Character.h"
 #include "DataClasses/GameCharacter.h"
@@ -16,10 +17,9 @@
 #include "DataClasses/SoundEngine.h"
 #include "DataClasses/shader.h"
 #include "DataClasses/model.h"
+#include "DataClasses/HighScoreManager.h"
 
 #include <ft2build.h>
-
-#include "FallingObject.h"
 
 #include FT_FREETYPE_H
 
@@ -55,7 +55,7 @@ string gameName = "Down To The Last Bite";
 // Sound
 SoundManager menuMusic;
 SoundManager gameMusic;
-SoundManager sfxMouse;
+SoundManager sfxPlay;
 SoundManager goodApple;
 SoundManager badApple;
 SoundManager diamond;
@@ -63,7 +63,11 @@ SoundManager missed1;
 SoundManager missed2;
 SoundManager maskSpeech;
 SoundManager maskVanish;
+SoundManager glass;
+SoundManager sfxMouse;
+SoundManager sfxMirror;
 SoundEngine soundEngine;
+
 
 // Those variables are used to fix the window to the screen size
 float scaleScreen;
@@ -82,7 +86,10 @@ int loadFont(const std::string& font_name);
 
 enum GameState {
     MENU,
-    GAME
+    GAME,
+    GAME_OVER_ANIMATION,
+    INPUT_NAME,
+    LEADERBOARD
 };
 GameState currentState = MENU;
 
@@ -99,28 +106,40 @@ glm::vec3 cameraUp = glm::vec3(0.0f, 1.0f, 0.0f);
 
 
 Button startButton;
+Button lbButton;
+Button backButton;
 
 Player player;
 Model appleModel;
 Model maskModel;
-
+Model ampouleModel;
+Model mirrorModel;
 
 float lastSpawnTime = 0.0f;
 float spawnInterval = 2.0f;
 std::vector<FallingObject> objects;
 
-//Statistiche gioco
+// Statistics
 int score =0;
 int lives =3;
 
-//Mouse
+// Mouse
 bool showMagicMask = false;
+int activeDistractionType = 0;
 float maskEventTimer = 0.0f;
+bool controlsInverted = false;
+float mirrorTimer = 0.0f;
 float timeBetweenMaskEvents = 30.0f;
 
 bool isDraggingMask = false;
 float maskOffsetY = 0.0f;
 double dragStartY = 0.0;
+
+std::string currentInputName = "";
+bool keyProcessed = false;
+std::vector<ScoreEntry> highScoresList;
+extern const std::string SCORE_FILE = "highscores.txt";
+
 
 int main()
 {
@@ -141,14 +160,18 @@ int main()
         //----Set Music
         menuMusic = SoundManager(getResource("Music/Overture.mp3"), soundEngine.volMusic, true, &soundEngine);
         gameMusic = SoundManager(getResource("Music/Aquarium.mp3"), soundEngine.volMusic,true, &soundEngine);
-        sfxMouse = SoundManager(getResource("SFX/witchLaugh.wav"), soundEngine.volSound, false, &soundEngine);
+        sfxPlay = SoundManager(getResource("SFX/witchLaugh.wav"), soundEngine.volSound, false, &soundEngine);
         goodApple = SoundManager ( getResource("SFX/appleCaught.wav"), soundEngine.volSound, false, &soundEngine);
         badApple = SoundManager(getResource("SFX/badApple.wav"), soundEngine.volSound, false, &soundEngine);
         diamond = SoundManager(getResource("SFX/diamond.wav"), soundEngine.volSound, false, &soundEngine);
         missed1 = SoundManager(getResource("SFX/missLaugh.wav"), soundEngine.volMusic, false, &soundEngine);
         missed2 = SoundManager(getResource("SFX/missVoice.wav"), soundEngine.volMusic, false, &soundEngine);
-        maskSpeech = SoundManager(getResource("SFX/Mirror_sfx.mp3"), soundEngine.volMusic, false, &soundEngine);
+        maskSpeech = SoundManager(getResource("SFX/sfxMask.mp3"), soundEngine.volMusic, false, &soundEngine);
         maskVanish = SoundManager(getResource("SFX/maskVanish.mp3"), soundEngine.volMusic, false, &soundEngine);
+        glass = SoundManager(getResource("SFX/Breaked_Glass.mp3"),soundEngine.volMusic, false, &soundEngine);
+        sfxMouse = SoundManager(getResource("SFX/mouseClick.wav"),soundEngine.volMusic, false, &soundEngine);
+        sfxMirror = SoundManager(getResource("SFX/sfxMirror.mp3"),soundEngine.volMusic, false, &soundEngine);
+
         //----Opening Window
         GLFWwindow* window = setWindow();
 
@@ -205,7 +228,7 @@ GLFWwindow* setWindow() {
 
     // glfw window creation
     // --------------------
-    GLFWmonitor* monitor = glfwGetPrimaryMonitor(); // Mettere Null se non si vuole il full screen
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
     //glfwGetMonitorPhysicalSize(monitor, &SCR_WIDTH, &SCR_HEIGHT);
     GLFWwindow* window = glfwCreateWindow(SCR_WIDTH, SCR_HEIGHT, gameName.c_str(), monitor, nullptr);
     if (window == nullptr)
@@ -217,10 +240,8 @@ GLFWwindow* setWindow() {
     glfwMakeContextCurrent(window);
     glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSetCursorPosCallback(window, mouse_callback);
-    //glfwSetScrollCallback(window, scroll_callback);
 
     // tell GLFW to capture our mouse
-    //glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     // glad: load all OpenGL function pointers
     // ---------------------------------------
@@ -230,7 +251,6 @@ GLFWwindow* setWindow() {
         return nullptr;
     }
 
-    // tell stb_image.h to flip loaded texture on the y-axis (before loading model).
     stbi_set_flip_vertically_on_load(false);
 
     // Blending function for Alpha channels
@@ -359,15 +379,78 @@ void processInput(GLFWwindow* window) {
         glfwSetWindowShouldClose(window, true);
     }
 
+    if (currentState == INPUT_NAME) {
+        // ENTER If 3 letters are written
+        if (currentInputName.length() >= 3) {
+            if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS && !keyProcessed) {
+                // Save Score
+                HighScoreManager::addScore(currentInputName, score, SCORE_FILE);
+                // Update List
+                highScoresList = HighScoreManager::loadScores(SCORE_FILE);
+                currentState = MENU;
+                menuMusic.playSound();
+
+                keyProcessed = true;
+                sfxMouse.playSound();
+            }
+        }
+        else {
+            // To insert letters
+            for (int key = GLFW_KEY_A; key <= GLFW_KEY_Z; ++key) {
+                if (glfwGetKey(window, key) == GLFW_PRESS && !keyProcessed) {
+                    char letter = 'A' + (key - GLFW_KEY_A);
+                    currentInputName += letter;
+                    keyProcessed = true;
+                }
+            }
+        }
+
+        // If no key is pressed
+        bool anyKeyPressed = false;
+        for (int key = GLFW_KEY_A; key <= GLFW_KEY_Z; ++key) {
+             if (glfwGetKey(window, key) == GLFW_PRESS) anyKeyPressed = true;
+        }
+        if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) anyKeyPressed = true;
+
+        if (!anyKeyPressed) keyProcessed = false;
+    }
+
     if (currentState == MENU) {
         if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS ) {
             if (startButton.selected == true) { // Check if the mouse is inside the button
                 if (startButton.clicked == false) {// check if is already clicked
-                    sfxMouse.playSound();
+                    // Actual time
+                    auto now = std::chrono::high_resolution_clock::now();
+                    // How much time is gone since 0 time of pc
+                    auto duration = now.time_since_epoch();
+                    // Conversion in ms
+                    unsigned int millis = (unsigned int)std::chrono::duration_cast<std::chrono::milliseconds>(duration).count();
+                    // I use this number as a seed
+                    srand(millis);
+                    sfxPlay.playSound();
                     startButton.clicked = true;
                     menuMusic.stopSound();
                     gameMusic.playSound();
+                    lastFrame = static_cast<float>(glfwGetTime());
+                    deltaTime = 0.0f;
+                    // Reset
+                    lives = 3;
+                    score = 0;
+                    objects.clear();
+                    currentInputName = "";
+
+                    target_x_position = 0.0f;
+                    current_lane = 1;
                     currentState = GAME;
+                }
+            }
+            if (lbButton.selected == true) {
+                if (lbButton.clicked == false) {
+                    sfxMouse.playSound();
+                    lbButton.clicked = true;
+
+                    highScoresList = HighScoreManager::loadScores(SCORE_FILE);
+                    currentState = LEADERBOARD;
                 }
             }
         }
@@ -375,11 +458,42 @@ void processInput(GLFWwindow* window) {
             if (startButton.selected == true) {
                 startButton.clicked = false;
             }
+            if (lbButton.clicked == true){
+                lbButton.clicked = false;
+            }
         }
     }
+    if (currentState == LEADERBOARD) {
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS) {
+            if (backButton.selected == true) {
+                if (backButton.clicked == false) {
+                    sfxMouse.playSound();
+                    backButton.clicked = true;
 
+                    // Back to menu from the leaderboard
+                    currentState = MENU;
+
+                }
+            }
+        }
+
+        // Flag reset on the mouse release
+        if (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_RELEASE) {
+            if (backButton.selected == true) backButton.clicked = false;
+        }
+    }
     if (currentState == GAME) {
-        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+        int keyLeft = GLFW_KEY_A;
+        int keyRight = GLFW_KEY_D;
+
+        if (controlsInverted)
+        {
+            keyLeft = GLFW_KEY_D;
+            keyRight = GLFW_KEY_A;
+        }
+
+        if (glfwGetKey(window, keyLeft) == GLFW_PRESS) {
+            // Movement of the basket from keyboard
             if (isAPressed == false) {
                 if (current_lane > 0) {
                     movePlayerToLane(current_lane - 1);
@@ -390,7 +504,7 @@ void processInput(GLFWwindow* window) {
         else {
                 isAPressed = false;
         }
-         if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+         if (glfwGetKey(window, keyRight) == GLFW_PRESS) {
                     if (isDPressed == false) {
                         if (current_lane < 2) {
                             movePlayerToLane(current_lane +1 );
@@ -425,12 +539,30 @@ void mouse_callback(GLFWwindow* window, double xPosIn, double yPosIn)
     const auto h_conv = static_cast<float>(SCR_HEIGHT);  //1440
     const float xPos = (w_conv * static_cast<float>(xPosIn) / static_cast<float>(width));
     float yPos = (h_conv * static_cast<float>(yPosIn) / static_cast<float>(height));
-    if (xPos > startButton.x && xPos < startButton.x + startButton.width &&
+    if (currentState == MENU){
+        if (xPos > startButton.x && xPos < startButton.x + startButton.width &&
         yPos > startButton.y && yPos < startButton.y + startButton.height) {
-        startButton.selected = true;
+            startButton.selected = true;
         }
-    else {
-        startButton.selected = false;
+        else {
+            startButton.selected = false;
+        }
+        if (xPos > lbButton.x && xPos < lbButton.x + lbButton.width &&
+            yPos > lbButton.y && yPos < lbButton.y + lbButton.height) {
+            lbButton.selected = true;
+            }
+        else {
+            lbButton.selected = false;
+        }
+    }
+    if (currentState == LEADERBOARD){
+        if (xPos > backButton.x && xPos < backButton.x + backButton.width &&
+        yPos > backButton.y && yPos < backButton.y + backButton.height) {
+            backButton.selected = true;
+        }
+        else {
+            backButton.selected = false;
+        }
     }
 }
 
@@ -492,22 +624,15 @@ Texture2D loadTextureFromFile(const char* file, bool alpha)
         texture.Internal_Format = GL_RGBA;
         texture.Image_Format = GL_RGBA;
     }
-    // else { ... di default è GL_RGB nel costruttore di Texture2D ... }
 
     // load image
     int width, height, nrChannels;
 
-    // --- MODIFICA QUI ---
-    // Invece di passare 0 come ultimo parametro (che mantiene i canali originali del file),
-    // FORZIAMO il numero di canali che vogliamo (3 per RGB, 4 per RGBA).
-    // Questo risolve il problema se l'immagine su disco ha un formato strano (es. scala di grigi o palette).
-    int desiredChannels = alpha ? 4 : 3;
+    int desiredChannels = alpha ? 4 : 3; // if there's transparence
     unsigned char* data = stbi_load(file, &width, &height, &nrChannels, desiredChannels);
-    // --------------------
 
-    // Adesso width, height e data sono allineati correttamente al formato che OpenGL si aspetta
 
-    if (data) // Controllo di sicurezza
+    if (data)
     {
         texture.Generate(width, height, data);
     }
@@ -516,11 +641,10 @@ Texture2D loadTextureFromFile(const char* file, bool alpha)
         std::cout << "Failed to load texture: " << file << std::endl;
     }
 
-    // ... resto del codice uguale ...
     glBindTexture(GL_TEXTURE_2D, texture.ID);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    // Usa CLAMP_TO_EDGE per evitare che bordi strani appaiano se l'immagine non è perfetta
+
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     glBindTexture(GL_TEXTURE_2D, 0);
